@@ -30,3 +30,10 @@ test('readFrontmatter reads a file', async () => {
   assert.equal((await readFrontmatter(join(dir, 'SKILL.md'))).fields.name, 'f');
   assert.equal(await readFrontmatter(join(dir, 'missing.md')), undefined);
 });
+
+test('strips single-quoted values and pins empty-value semantics', () => {
+  const fm = parseFrontmatter("---\nname: 'quoted skill'\ndescription:\nversion: ''\n---\n");
+  assert.equal(fm.fields.name, 'quoted skill');
+  assert.equal(fm.fields.description, '');
+  assert.equal(fm.fields.version, '');
+});
