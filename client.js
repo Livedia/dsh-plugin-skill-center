@@ -96,8 +96,35 @@ window.__ModuleLoader__.load({
         if (r.ok) { setScan(null); await refresh(); }
       };
       const doCollectAll = async (distribute) => {
-        const r = await call('POST', '/collect-all', { distribute });
-        if (r.ok) { setScan(null); await refresh(); }
+        if (scan === null) return;
+        const entries = scan.groups.map((g) => ({
+          name: g.name,
+          agentId: g.variants[0].entries[0].agentId,
+        }));
+        const r = await call('POST', '/collect', { entries });
+        if (Array.isArray(r.results)) {
+          const failed = r.results.filter((x) => !x.ok);
+          if (failed.length > 0) setError(`${failed.length}/${r.results.length} 失败: ${failed[0]?.error ?? ''}`);
+        }
+        if (distribute) {
+          const s = await call('GET', '/state', null);
+          if (s.ok) {
+            for (const skill of s.registry.skills) {
+              for (const agent of s.config.agents) {
+                if (skill.distributions?.[agent.id]?.enabled === true) continue;
+                try {
+                  await fetch('/skill-center-api/enable', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ skillId: skill.id, agentId: agent.id }),
+                  });
+                } catch { /* best effort per agent */ }
+              }
+            }
+          }
+        }
+        if (r.ok) setScan(null);
+        await refresh();
       };
       const doToggle = async (skill, agent) => {
         const on = skill.distributions?.[agent.id]?.enabled === true;
