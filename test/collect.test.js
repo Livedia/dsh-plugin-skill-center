@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, lstat, readlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, lstat, readlink, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectOne } from '../lib/collect.js';
@@ -76,4 +76,33 @@ test('rolls back library copy on hash mismatch (injectable hasher)', async () =>
   const { access } = await import('node:fs/promises');
   await assert.rejects(access(join(library, 'gamma')));
   assert.ok(!(await lstat(origin)).isSymbolicLink()); // origin untouched
+});
+
+test('symlink-swap failure restores origin and removes the library copy', async () => {
+  const { agentDir, library } = await setup();
+  const origin = join(agentDir, 'delta');
+  await mkdir(origin);
+  await writeFile(join(origin, 'SKILL.md'), '---\nname: delta\ndescription: D\n---\nbody');
+  const failingLinker = async () => { throw new Error('boom'); };
+  await assert.rejects(
+    collectOne({ path: origin, name: 'delta', kind: 'dir', frontmatter: { name: 'delta' } },
+      library, [], { symlinker: failingLinker }),
+    /symlink failed/);
+  assert.ok((await lstat(origin)).isDirectory()); // origin restored
+  const { access } = await import('node:fs/promises');
+  await assert.rejects(access(join(library, 'delta'))); // library copy removed
+  await assert.rejects(access(`${origin}.skill-center-bak`)); // no backup residue
+});
+
+test('collecting an already-collected skill is idempotent', async () => {
+  const { agentDir, library } = await setup();
+  const origin = join(agentDir, 'alpha');
+  await mkdir(origin);
+  await writeFile(join(origin, 'SKILL.md'), '---\nname: alpha\ndescription: A\n---\nbody');
+  const finding = { path: origin, name: 'alpha', kind: 'dir', agentId: 'dsh',
+    frontmatter: { name: 'alpha', description: 'A' } };
+  const first = await collectOne(finding, library, []);
+  const second = await collectOne(finding, library, [first.record]);
+  assert.equal(second.id, first.id);
+  assert.equal(second.record, first.record); // same record object, no duplicate
 });
