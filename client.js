@@ -7,24 +7,26 @@ window.__ModuleLoader__.load({
 
     const CSS = `
 .sc-root { display: flex; flex-direction: column; height: 100%; padding: 16px 20px; gap: 12px;
-  color: var(--dsw-alias-text-1); background: var(--dsw-alias-bg-1); overflow-y: auto; }
+  color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); overflow-y: auto; }
 .sc-head { display: flex; align-items: center; gap: 8px; }
 .sc-title { font-size: 16px; font-weight: 600; }
-.sc-sub { color: var(--dsw-alias-text-3); font-size: 12px; }
-.sc-btn { border: 1px solid var(--dsw-alias-border-1); background: var(--dsw-alias-bg-2);
-  color: var(--dsw-alias-text-1); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 12px; }
+.sc-sub { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.sc-btn { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 12px; }
 .sc-btn[disabled] { opacity: 0.5; cursor: default; }
-.sc-btn.primary { background: var(--dsw-alias-primary); color: var(--dsw-alias-primary-contrast, #fff); border-color: transparent; }
+.sc-btn.primary { background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base); border-color: transparent; }
 .sc-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
-  border: 1px solid var(--dsw-alias-border-1); background: var(--dsw-alias-bg-2); }
+  border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); }
 .sc-name { font-weight: 500; font-size: 13px; }
-.sc-meta { color: var(--dsw-alias-text-3); font-size: 11px; }
-.sc-chip { border: 1px solid var(--dsw-alias-border-1); border-radius: 999px; padding: 2px 10px;
-  font-size: 11px; cursor: pointer; background: transparent; color: var(--dsw-alias-text-2); }
-.sc-chip.on { background: var(--dsw-alias-primary); color: var(--dsw-alias-primary-contrast, #fff); border-color: transparent; }
-.sc-section { border: 1px solid var(--dsw-alias-border-1); border-radius: 8px; padding: 12px; background: var(--dsw-alias-bg-2); }
-.sc-banner { border: 1px solid var(--dsw-alias-warn, orange); border-radius: 8px; padding: 8px 12px; font-size: 12px; }
+.sc-meta { color: var(--dsw-alias-label-secondary); font-size: 11px; }
+.sc-chip { border: 1px solid var(--dsw-alias-border-l2); border-radius: 999px; padding: 2px 10px;
+  font-size: 11px; cursor: pointer; background: transparent; color: var(--dsw-alias-label-secondary); }
+.sc-chip.on { background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base); border-color: transparent; }
+.sc-section { border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 12px; background: var(--dsw-alias-bg-layer-1); }
+.sc-banner { border: 1px solid var(--dsw-alias-state-warn-primary); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--dsw-alias-label-primary); }
 .sc-list { display: flex; flex-direction: column; gap: 6px; }
+.sc-icon { background: none; border: none; cursor: pointer; color: var(--dsw-alias-label-secondary); padding: 6px; border-radius: 6px; }
+.sc-icon:hover { color: var(--dsw-alias-label-primary); }
 `;
 
     function Icon() {
@@ -34,12 +36,34 @@ window.__ModuleLoader__.load({
         h('rect', { x: 18, y: 22, width: 36, height: 24, rx: 4, fill: 'currentColor' }));
     }
 
+    class PanelBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { error: null }; }
+      static getDerivedStateFromError(error) { return { error }; }
+      render() {
+        if (this.state.error !== null) {
+          return h('div', { className: 'sc-root' },
+            h('style', null, CSS),
+            h('div', { className: 'sc-banner', role: 'alert' },
+              'skill-center crashed: ' + (this.state.error?.message ?? String(this.state.error)),
+              h('pre', { style: { whiteSpace: 'pre-wrap', fontSize: 11, marginTop: 8 } },
+                String(this.state.error?.stack ?? '').split('\n').slice(0, 8).join('\n'))));
+        }
+        return this.props.children;
+      }
+    }
+
     function Panel({ ctx }) {
       const [state, setState] = React.useState(null);
       const [scan, setScan] = React.useState(null);
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState('');
-      const t = React.useMemo(() => ctx.locale.bind(NS), [ctx]);
+      const t = React.useMemo(() => {
+        try {
+          return ctx.locale.bind(NS);
+        } catch {
+          return (key) => DICTS.zh[key] ?? DICTS.en[key] ?? key;
+        }
+      }, [ctx]);
 
       const call = async (method, route, body) => {
         setBusy(true); setError('');
@@ -82,7 +106,11 @@ window.__ModuleLoader__.load({
       };
 
       if (state === null) {
-        return h('div', { className: 'sc-root' }, h('p', null, t('loading')));
+        return h('div', { className: 'sc-root' },
+          h('style', null, CSS),
+          error !== '' && h('div', { className: 'sc-banner', role: 'alert' }, `${t('loadFailed')}: ${error}`),
+          error === '' && h('p', null, t('loading')),
+          h('button', { className: 'sc-btn', onClick: refresh, disabled: busy }, t('retry')));
       }
       const agents = state.config.agents;
       const skills = state.registry.skills;
@@ -130,6 +158,7 @@ window.__ModuleLoader__.load({
     const DICTS = {
       zh: {
         loading: '加载中…', title: '技能中心', refresh: '刷新', scan: '扫描',
+        loadFailed: '加载失败', retry: '重试',
         'kind.single': '唯一', 'kind.duplicate': '重复', 'kind.conflict': '版本冲突',
         scanReport: '扫描报告', skipped: '已跳过', collect: '收编入库',
         empty: '中央库为空。先扫描并收编现有技能。',
@@ -138,6 +167,7 @@ window.__ModuleLoader__.load({
       },
       en: {
         loading: 'Loading…', title: 'Skill Center', refresh: 'Refresh', scan: 'Scan',
+        loadFailed: 'Load failed', retry: 'Retry',
         'kind.single': 'single', 'kind.duplicate': 'duplicate', 'kind.conflict': 'version conflict',
         scanReport: 'Scan report', skipped: 'Skipped', collect: 'Collect',
         empty: 'Library is empty. Scan and collect existing skills first.',
@@ -151,20 +181,25 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, DICTS));
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-          name: 'sidebar.panellist', id: 'skill-center', order: 60, label: () => ctx.locale.bind(NS)('title'),
+          name: 'sidebar.panellist', id: 'skill-center', order: 60, locale: NS, label: () => ctx.locale.bind(NS)('title'),
         }, function SkillCenterIcon() {
-          return h('button', {
-            style: { background: 'none', border: 'none', cursor: 'pointer',
-              color: 'var(--dsw-alias-text-2)', padding: 6, borderRadius: 6 },
+          return h('span', {
+            className: 'sc-icon', role: 'button', tabIndex: 0,
             title: ctx.locale.bind(NS)('title'),
-            onClick: () => ctx.layout.selectPanel('skill-center'),
             'aria-label': ctx.locale.bind(NS)('title'),
+            onClick: () => ctx.layout.selectPanel('skill-center'),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                ctx.layout.selectPanel('skill-center');
+              }
+            },
           }, h(Icon));
         }));
         ctx.slots.inject('main', () => ctx.slots.register({
-          name: 'main', key: 'skill-center',
+          name: 'main', key: 'skill-center', locale: NS,
         }, function SkillCenterPanel() {
-          return h(Panel, { ctx });
+          return h(PanelBoundary, null, h(Panel, { ctx }));
         }));
       },
     };
