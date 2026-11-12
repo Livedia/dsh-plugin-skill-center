@@ -133,6 +133,13 @@ test('http handler enforces content-type and body size; GET works', async () => 
       body: 'x'.repeat(2 * 1024 * 1024),
     });
     assert.equal(big.status, 413);
+    const post = await fetch(`http://127.0.0.1:${port}/skill-center-api/scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(post.status, 200);
+    assert.equal((await post.json()).ok, true);
     const ok = await fetch(`http://127.0.0.1:${port}/skill-center-api/state`);
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).ok, true);

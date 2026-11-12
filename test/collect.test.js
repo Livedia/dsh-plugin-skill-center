@@ -94,6 +94,33 @@ test('symlink-swap failure restores origin and removes the library copy', async 
   await assert.rejects(access(`${origin}.skill-center-bak`)); // no backup residue
 });
 
+test('flat symlink-swap failure restores origin file and removes the library copy', async () => {
+  const { agentDir, library } = await setup();
+  const origin = join(agentDir, 'epsilon.md');
+  await writeFile(origin, '---\nname: epsilon\ndescription: E\n---\nbody');
+  const failingLinker = async () => { throw new Error('boom'); };
+  await assert.rejects(
+    collectOne({ path: origin, name: 'epsilon', kind: 'flat', frontmatter: { name: 'epsilon' } },
+      library, [], { symlinker: failingLinker }),
+    /symlink failed/);
+  assert.ok((await lstat(origin)).isFile()); // origin restored as file
+  const { access } = await import('node:fs/promises');
+  await assert.rejects(access(join(library, 'epsilon')));
+  await assert.rejects(access(`${origin}.skill-center-bak`));
+});
+
+test('non-library symlink origin without a scan hash is rejected', async () => {
+  const { home, agentDir, library } = await setup();
+  const outside = join(home, 'outside');
+  await mkdir(outside);
+  await writeFile(join(outside, 'SKILL.md'), '---\nname: zeta\ndescription: Z\n---\nbody');
+  await symlink(outside, join(agentDir, 'zeta'));
+  await assert.rejects(
+    collectOne({ path: join(agentDir, 'zeta'), name: 'zeta', kind: 'dir',
+      frontmatter: { name: 'zeta', description: 'Z' } }, library, []),
+    /refusing to collect symlink/);
+});
+
 test('collecting an already-collected skill is idempotent', async () => {
   const { agentDir, library } = await setup();
   const origin = join(agentDir, 'alpha');
