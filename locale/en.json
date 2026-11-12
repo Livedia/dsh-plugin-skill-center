@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skill Center",
+    "description": "Unified local skill library: collect scattered agent skills into one central library, deduplicate and diff versions, and distribute to each agent with one switch."
+  }
+}
