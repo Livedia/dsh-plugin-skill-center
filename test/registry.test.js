@@ -26,3 +26,17 @@ test('slugify and allocateId', () => {
   assert.equal(allocateId([], 'a'), 'a');
   assert.equal(allocateId([{ id: 'a' }, { id: 'a-2' }], 'a'), 'a-3');
 });
+
+test('loadRegistry forces version 1 and preserves extra fields', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'sc-reg-'));
+  const file = join(dir, 'registry.json');
+  await writeFile(file, '{"version":99,"skills":[],"note":"keep"}', 'utf8');
+  const reg = await loadRegistry(file);
+  assert.equal(reg.version, 1);
+  assert.equal(reg.note, 'keep');
+});
+
+test('slugify keeps CJK readable', () => {
+  assert.equal(slugify('中国专利技能'), '中国专利技能');
+  assert.equal(slugify('My Skill'), 'my-skill');
+});

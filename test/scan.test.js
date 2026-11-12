@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scanRoot, groupFindings } from '../lib/scan.js';
@@ -17,7 +17,7 @@ test('finds dir skills and flat md skills, skips non-skills', async () => {
   await writeFile(join(root, 'beta.md'), '---\nname: beta\ndescription: B\n---\nbody');
   await mkdir(join(root, 'no-skill'));
   await writeFile(join(root, 'README.md'), 'no frontmatter');
-  const found = await scanRoot(root, 'dsh');
+  const { found } = await scanRoot(root, 'dsh');
   assert.equal(found.length, 2);
   const alpha = found.find((f) => f.name === 'alpha');
   assert.equal(alpha.kind, 'dir');
@@ -26,8 +26,13 @@ test('finds dir skills and flat md skills, skips non-skills', async () => {
   assert.ok(alpha.hash.startsWith('sha256:'));
 });
 
-test('scanRoot on missing root returns empty', async () => {
-  assert.deepEqual(await scanRoot(join(await makeRoot(), 'gone'), 'x'), []);
+test('scanRoot on missing root reports skipped root', async () => {
+  const missing = join(await makeRoot(), 'gone');
+  const { found, skipped } = await scanRoot(missing, 'x');
+  assert.deepEqual(found, []);
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].name, missing);
+  assert.match(skipped[0].reason, /unreadable root/);
 });
 
 test('groupFindings flags duplicates and conflicts', () => {
@@ -46,4 +51,37 @@ test('groupFindings flags duplicates and conflicts', () => {
   assert.equal(b.kind, 'conflict');
   assert.equal(b.variants.length, 2);
   assert.equal(groups.find((g) => g.name === 'c').kind, 'single');
+});
+
+test('symlinked flat md is discovered as flat; broken symlink lands in skipped', async () => {
+  const root = await makeRoot();
+  const target = join(root, 'target-skill.md');
+  await writeFile(target, '---\nname: linked\ndescription: L\n---\nbody');
+  await symlink(target, join(root, 'gamma.md'));
+  await symlink(join(root, 'nowhere.md'), join(root, 'broken.md'));
+  const { found, skipped } = await scanRoot(root, 'dsh');
+  assert.equal(found.find((f) => f.name === 'linked')?.kind, 'flat');
+  assert.ok(skipped.some((s) => s.name === 'broken.md'));
+});
+
+test('symlinked dir hashes by target content: same hash as the real dir', async () => {
+  const rootA = await makeRoot(); const rootB = await makeRoot();
+  const real = join(rootA, 'alpha');
+  await mkdir(real);
+  await writeFile(join(real, 'SKILL.md'), '---\nname: alpha\ndescription: A\n---\nx');
+  await symlink(real, join(rootB, 'alpha'));
+  const { found: fa } = await scanRoot(rootA, 'dsh');
+  const { found: fb } = await scanRoot(rootB, 'codex');
+  assert.equal(fa[0].hash, fb[0].hash);
+  const groups = groupFindings([...fa, ...fb]);
+  assert.equal(groups[0].kind, 'duplicate');
+});
+
+test('groupFindings returns groups sorted by name', () => {
+  const groups = groupFindings([
+    { name: 'c', agentId: 'x', hash: '1' },
+    { name: 'a', agentId: 'x', hash: '2' },
+    { name: 'b', agentId: 'x', hash: '3' },
+  ]);
+  assert.deepEqual(groups.map((g) => g.name), ['a', 'b', 'c']);
 });
