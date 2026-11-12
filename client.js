@@ -95,6 +95,10 @@ window.__ModuleLoader__.load({
         const r = await call('POST', '/collect', { entries: [{ name, agentId }] });
         if (r.ok) { setScan(null); await refresh(); }
       };
+      const doCollectAll = async (distribute) => {
+        const r = await call('POST', '/collect-all', { distribute });
+        if (r.ok) { setScan(null); await refresh(); }
+      };
       const doToggle = async (skill, agent) => {
         const on = skill.distributions?.[agent.id]?.enabled === true;
         await call('POST', on ? '/disable' : '/enable', { skillId: skill.id, agentId: agent.id });
@@ -123,7 +127,11 @@ window.__ModuleLoader__.load({
           h('button', { className: 'sc-btn primary', onClick: doScan, disabled: busy }, t('scan'))),
         error !== '' && h('div', { className: 'sc-banner', role: 'alert' }, error),
         scan !== null && h('div', { className: 'sc-section' },
-          h('div', { className: 'sc-title' }, `${t('scanReport')}: ${scan.total}`),
+          h('div', { className: 'sc-head' },
+            h('div', { className: 'sc-title' }, `${t('scanReport')}: ${scan.total}`),
+            h('span', { style: { flex: 1 } }),
+            h('button', { className: 'sc-btn primary', disabled: busy, onClick: () => doCollectAll(false) }, t('collectAll')),
+            h('button', { className: 'sc-btn', disabled: busy, onClick: () => doCollectAll(true) }, t('collectAllDistribute'))),
           scan.skipped?.length > 0 && h('div', { className: 'sc-meta' },
             `${t('skipped')}: ${scan.skipped.map((s) => s.name).join(', ')}`),
           h('div', { className: 'sc-list' },
@@ -161,6 +169,7 @@ window.__ModuleLoader__.load({
         loadFailed: '加载失败', retry: '重试',
         'kind.single': '唯一', 'kind.duplicate': '重复', 'kind.conflict': '版本冲突',
         scanReport: '扫描报告', skipped: '已跳过', collect: '收编入库',
+        collectAll: '收编全部', collectAllDistribute: '收编并分发到全部 agent',
         empty: '中央库为空。先扫描并收编现有技能。',
         uninstall: '卸载', 'source.collected': '本地收编', 'source.market': '市场安装',
         'source.github': 'GitHub 安装', 'source.remote': '远程同步',
@@ -170,6 +179,7 @@ window.__ModuleLoader__.load({
         loadFailed: 'Load failed', retry: 'Retry',
         'kind.single': 'single', 'kind.duplicate': 'duplicate', 'kind.conflict': 'version conflict',
         scanReport: 'Scan report', skipped: 'Skipped', collect: 'Collect',
+        collectAll: 'Collect all', collectAllDistribute: 'Collect & distribute all',
         empty: 'Library is empty. Scan and collect existing skills first.',
         uninstall: 'Uninstall', 'source.collected': 'collected', 'source.market': 'marketplace',
         'source.github': 'GitHub', 'source.remote': 'remote sync',

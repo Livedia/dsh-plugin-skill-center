@@ -27,8 +27,7 @@ test('scan reports the fixture skill', async () => {
   const { sc } = await setup();
   const report = await sc.dispatch('POST', '/scan', {});
   assert.equal(report.ok, true);
-  assert.equal(report.groups.length, 1);
-  assert.equal(report.groups[0].name, 'alpha');
+  assert.equal(report.groups.length, 1);  assert.equal(report.groups[0].name, 'alpha');
   assert.deepEqual(report.skipped, []);
 });
 
@@ -148,4 +147,36 @@ test('http handler enforces content-type and body size; GET works', async () => 
     server.closeAllConnections(); // undici keep-alive sockets otherwise hold 'close' up forever
     await new Promise((resolve) => server.once('close', resolve));
   }
+});
+
+test('collect-all collects every group and distributes to all agents', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'sc-bulk-'));
+  const dshDir = join(home, 'dsh'); const codexDir = join(home, 'codex');
+  await mkdir(dshDir); await mkdir(codexDir);
+  for (const [name, agentDir] of [['alpha', dshDir], ['beta', codexDir]]) {
+    const dir = join(agentDir, name);
+    await mkdir(dir);
+    await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name}\n---\nbody`);
+  }
+  const sc = createSkillCenter({ configFile: join(home, 'config.json'), initial: {
+    libraryRoot: join(home, 'library'), archiveRoot: join(home, 'archive'),
+    registryFile: join(home, 'registry.json'),
+    agents: [
+      { id: 'dsh', label: 'DSH', dir: dshDir, mode: 'symlink' },
+      { id: 'codex', label: 'Codex', dir: codexDir, mode: 'symlink' },
+    ],
+  } });
+  const r = await sc.dispatch('POST', '/collect-all', { distribute: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.collected, 2);
+  assert.equal(r.distributed, 2);
+  const state = await sc.dispatch('GET', '/state', null);
+  assert.equal(state.registry.skills.length, 2);
+  for (const skill of state.registry.skills) {
+    assert.equal(skill.distributions.dsh.enabled, true);
+    assert.equal(skill.distributions.codex.enabled, true);
+  }
+  const again = await sc.dispatch('POST', '/collect-all', {});
+  assert.equal(again.ok, true);
+  assert.equal(again.collected, 0);
 });
