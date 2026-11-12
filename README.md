@@ -48,6 +48,7 @@
 | `GET /state` | 配置 + 注册表快照 |
 | `POST /scan` | 扫描全部 agent 目录，返回分组报告与跳过清单 |
 | `POST /collect` | `{entries:[{name, agentId?}]}` 事务式收编入库 |
+| `POST /collect-all` | `{distribute?: boolean}` 一键收编全部扫描分组（可选同步分发到全部 agent） |
 | `POST /enable` / `POST /disable` | `{skillId, agentId}` 分发开关 |
 | `POST /uninstall` | `{skillId, archive?}` 卸载（默认归档） |
 | `POST /config` | 更新并持久化配置 |
@@ -64,7 +65,7 @@
 ```bash
 git clone https://github.com/Livedia/dsh-plugin-skill-center.git
 cd dsh-plugin-skill-center
-node --test        # 43 项测试，零第三方依赖
+node --test        # 44 项测试，零第三方依赖
 ```
 
 代码结构：`lib/frontmatter.js`（frontmatter 标量解析）、`lib/hashdir.js`（内容哈希）、`lib/scan.js`（扫描与分组）、`lib/registry.js`（注册表）、`lib/collect.js`（事务收编）、`lib/distribute.js`（分发）、`lib/config.js`（配置）、`lib/api.js`（操作核心 + HTTP）；`client.js` 为 Web 面板。

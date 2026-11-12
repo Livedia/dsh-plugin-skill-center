@@ -27,7 +27,8 @@ test('scan reports the fixture skill', async () => {
   const { sc } = await setup();
   const report = await sc.dispatch('POST', '/scan', {});
   assert.equal(report.ok, true);
-  assert.equal(report.groups.length, 1);  assert.equal(report.groups[0].name, 'alpha');
+  assert.equal(report.groups.length, 1);
+  assert.equal(report.groups[0].name, 'alpha');
   assert.deepEqual(report.skipped, []);
 });
 
