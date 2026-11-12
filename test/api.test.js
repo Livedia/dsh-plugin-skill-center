@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -62,4 +63,82 @@ test('unknown route → error payload', async () => {
   const { sc } = await setup();
   const r = await sc.dispatch('GET', '/nope', null);
   assert.equal(r.ok, false);
+});
+
+test('GET /skill/<id> returns record and files; unknown id errors', async () => {
+  const { sc } = await setup();
+  await sc.dispatch('POST', '/collect', { entries: [{ name: 'alpha', agentId: 'dsh' }] });
+  const state = await sc.dispatch('GET', '/state', null);
+  const id = state.registry.skills[0].id;
+  const r = await sc.dispatch('GET', `/skill/${id}`, null);
+  assert.equal(r.ok, true);
+  assert.equal(r.record.id, id);
+  assert.ok(r.files.includes('SKILL.md'));
+  const bad = await sc.dispatch('GET', '/skill/nope', null);
+  assert.equal(bad.ok, false);
+});
+
+test('uninstall defaults to archive; archive:false deletes outright', async () => {
+  const { access } = await import('node:fs/promises');
+  {
+    const { sc, home } = await setup();
+    await sc.dispatch('POST', '/collect', { entries: [{ name: 'alpha', agentId: 'dsh' }] });
+    const state = await sc.dispatch('GET', '/state', null);
+    const id = state.registry.skills[0].id;
+    assert.equal((await sc.dispatch('POST', '/uninstall', { skillId: id })).ok, true);
+    await access(join(home, 'archive', id));
+    const s2 = await sc.dispatch('GET', '/state', null);
+    assert.equal(s2.registry.skills.length, 0);
+  }
+  {
+    const { sc, home } = await setup();
+    await sc.dispatch('POST', '/collect', { entries: [{ name: 'alpha', agentId: 'dsh' }] });
+    const state = await sc.dispatch('GET', '/state', null);
+    const id = state.registry.skills[0].id;
+    assert.equal((await sc.dispatch('POST', '/uninstall', { skillId: id, archive: false })).ok, true);
+    await assert.rejects(access(join(home, 'archive', id)));
+  }
+});
+
+test('POST /config persists and a fresh instance loads it', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'sc-cfg-'));
+  const configFile = join(home, 'config.json');
+  const agentDir = join(home, 'agent');
+  await mkdir(agentDir);
+  const sc = createSkillCenter({ configFile, initial: {
+    libraryRoot: join(home, 'library'), archiveRoot: join(home, 'archive'),
+    registryFile: join(home, 'registry.json'),
+    agents: [{ id: 'dsh', label: 'DSH', dir: agentDir, mode: 'symlink' }] } });
+  const r = await sc.dispatch('POST', '/config', { archiveRoot: join(home, 'archive2') });
+  assert.equal(r.ok, true);
+  const sc2 = createSkillCenter({ configFile });
+  const state = await sc2.dispatch('GET', '/state', null);
+  assert.equal(state.config.archiveRoot, join(home, 'archive2'));
+  assert.equal(state.config.agents[0].id, 'dsh'); // agents preserved through persistence
+});
+
+test('http handler enforces content-type and body size; GET works', async () => {
+  const { makeHttpHandler } = await import('../lib/api.js');
+  const { sc } = await setup();
+  const server = createServer(makeHttpHandler(sc));
+  server.listen(0);
+  await new Promise((resolve) => server.once('listening', resolve));
+  const port = server.address().port;
+  try {
+    const noType = await fetch(`http://127.0.0.1:${port}/skill-center-api/scan`, { method: 'POST' });
+    assert.equal(noType.status, 415);
+    const big = await fetch(`http://127.0.0.1:${port}/skill-center-api/scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'x'.repeat(2 * 1024 * 1024),
+    });
+    assert.equal(big.status, 413);
+    const ok = await fetch(`http://127.0.0.1:${port}/skill-center-api/state`);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).ok, true);
+  } finally {
+    server.close();
+    server.closeAllConnections(); // undici keep-alive sockets otherwise hold 'close' up forever
+    await new Promise((resolve) => server.once('close', resolve));
+  }
 });
